@@ -1,0 +1,404 @@
+---
+title: "Modelling factors that predict Heart Attack"
+subtitle: "Data 318 - Final Project"
+author: "Brook Tilahun & Elias Nkuansambo"
+date: "4/21/2022"
+output:   
+  html_document:
+    themes: slate
+    toc: yes
+    toc_float: yes
+    toc_depth: 6
+    highlight: tango
+    df_print: paged
+  pdf_document:
+    toc: yes
+header-includes: |
+  ```{=latex}
+    \usepackage{amsmath,amsthm,amssymb,amsfonts}
+    \theoremstyle{definition}
+    \newtheorem{theorem}{Theorem}
+    \newtheorem{example}[theorem]{Example}
+    \newcommand\ds\displaystyle
+    \newcommand\ep\epsilon
+    \newcommand{\E}[1]{\mathbb{E}[#1]}
+    \newcommand{\R}[1]{\mathbb{R}}
+    \newcommand{\vv}[1]{\mathbf{#1}}
+  ```
+---
+
+# Introduction
+
+### Inspiration
+
+This project is focusing on modeling and predicting heart disease. Though an unfamiliar area for one of us, it is very curious topic for the both of us. Heart attacks are a leading cause of death worldwide. The CDC says "one person dies from heart attack every 36 seconds in the United States of America alone." (Retrieved 21 April 2022, from https://www.cdc.gov/heartdisease/facts.htm)
+One of the members of the group, Brook Tilahun, who is a Neuroscience student and researcher, has some knowledge of this topic, which would provide great guidance in this navigating this project. 
+
+### Data Access
+
+We have used from the (CDC website, 2)[https://www.cdc.gov/brfss/annual_data/annual_2020.html]  and it's available for free access to every user. This data was gathered by the CDC's behavioral risk factor surveillance system (BRFSS), which had to conducts an annual telephone survey on more than 400,000 US residents living in all states. The survey uses a standardized set of questions and a random number dialing system. This reduces the bias from sampling errors. However, one source of bias would be from oversampling only a small part of the population that completes the survey. Most of the models we use apply a weight to the variables so that this effect is negligible. The data is reliable and extensive, containing  401,958 rows and 279 columns of data. The **cleaned** version of the data has been made available for download in github.
+
+### Tidying the Data
+
+The dataset included variables of no importance to this analysis so we filtered the data to only keep key indicators of health and also socioeconomic status. From the dataset, we retrieved the following datasets/variables:
+
+  + Heart Attack (Target variable)
+  + Coronary Heart Disease
+  + Stroke
+  + Sex
+  + State
+  + Race
+  + Age
+  + BMI
+  + Smoking
+  + Drinking
+  + Asthma
+  + Kidney disease
+  + Cancer (Any cancer)
+  + Skin cancer
+  + COPD
+  + General Health
+  + Physical health
+  + Mental Health
+  + Diabetic
+  + Exercise (Any Exercise)
+  + Marital status (Marital_Status)
+  + Income (Income_Level)
+
+These variables are important indicators because they give the overall picture of one's health and ability to receive treatment.
+### Hypothesis
+
+Is there a correlation between heart attack and a factor X? (X is any reason people attribute to the cause of heart attack)
+In this model we set out to  investigate the rumors and common knowledge of what causes heart attack. Through modeling and predicting using different methods, we aim to come up with a list of variables, single or combined, and models that best predict heart attack. The data gathered from the CDC provides us with several variables that would be helpful in testing out our hypothesis.
+
+
+# Data Exploration {.tabset}
+
+After cleaning the data, the data looks like the following:
+
+## Dataset View {.tabset}
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = FALSE, comment = NA)
+# general purpose libraries
+library(tidyverse)
+library(caret)
+library(pROC)
+library(haven)
+library(forecast)
+library(gganimate)
+library(DT)
+# algorithm specific libraries
+library(MASS) # need for lda/qda
+library(leaps) # Needed for Subset Selection
+library(glmnet) # Needed for Ridge and Lasso
+library(ipred) # for bagging
+library(rpart) # for tree-based methods
+library(gbm) # for boosting
+library(randomForest) # for random forest
+library(e1071) # for svm and naiveBayes
+library(neuralnet) # for neural networks
+library(factoextra)
+library(FactoMineR)
+```
+
+
+# Main data
+
+We have included the steps to process the main data from the CDC, in order to acheive a clean data like we have in the clean data section. There is no need to run this unless, you want to add or change variables.
+
+Data_2020 <- read_xpt("LLCP2020.XPT ")
+cols<- c("CVDINFR4","CVDCRHD4","CVDSTRK3","_STATE","SEXVAR","_IMPRACE","_AGE_G", "GENHLTH","_PHYS14D","_MENT14D","_SMOKER3","_RFDRHV7","ASTHMA3","CHCKDNY2","CHCOCNCR","CHCSCNCR","DIABETE4","CHCCOPD2","EXERANY2","MARITAL","INCOME2") 
+
+Data_2020[cols]<- lapply(Data_2020[cols],factor)
+
+tidy_Data2020 <-Data_2020%>% dplyr::select("CVDINFR4","CVDCRHD4","CVDSTRK3","_STATE","SEXVAR","_IMPRACE","_AGE_G","_BMI5","GENHLTH","_PHYS14D","_MENT14D","_SMOKER3","_RFDRHV7","ASTHMA3","CHCKDNY2","CHCOCNCR","CHCSCNCR","DIABETE4","CHCCOPD2","EXERANY2","MARITAL","INCOME2")%>%rename(Heart_Attack="CVDINFR4",Coronary_Heart_Disease="CVDCRHD4",Stroke="CVDSTRK3",SEX = "SEXVAR", State="_STATE", Race="_IMPRACE",Age= "_AGE_G",BMI ="_BMI5",General_Health="GENHLTH",Physical_Health="_PHYS14D",Mental_Health="_MENT14D",Smoking="_SMOKER3",Drinking="_RFDRHV7",Asthma="ASTHMA3",Kidney_Disease="CHCKDNY2",Any_Cancer="CHCOCNCR",Skin_Cancer="CHCSCNCR",Diabetic="DIABETE4",COPD="CHCCOPD2",Any_Excercise="EXERANY2",Marital_Status="MARITAL",Income_Level="INCOME2")%>%mutate(BMI = BMI/100)
+
+new_cols<- c("Heart_Attack","Coronary_Heart_Disease","Stroke","SEX","State","Race","Age","BMI","General_Health","Physical_Health","Mental_Health","Smoking","Drinking","Asthma","Kidney_Disease","Any_Cancer","Skin_Cancer","Diabetic","COPD","Any_Excercise","Marital_Status","Income_Level")
+
+write_csv(tidy_Data2020[new_cols], "tidy_Data2020.csv")
+
+
+
+#Cleaned Data
+```{r}
+# Releveling
+
+tidy_Data2020 <-read.csv("https://raw.githubusercontent.com/brooktila/DATA318/main/tidy_Data2020.csv")%>%na.omit()
+
+tidy_Data2020$Coronary_Heart_Disease <- recode_factor(tidy_Data2020$Coronary_Heart_Disease, "1" = "Yes", "2" = "No","9"= "Refused", "7"="Don't know", "BLANK"="Missing")
+tidy_Data2020$Heart_Attack <- recode_factor(tidy_Data2020$Heart_Attack, "1" = "Yes", "2" = "No","9"= "Refused", "7"="Don't know", "BLANK"="Missing")
+tidy_Data2020$Stroke <- recode_factor(tidy_Data2020$Stroke, "1" = "Yes", "2" = "No","9"= "Refused", "7"="Don't know", "BLANK"="Missing")
+tidy_Data2020$SEX <- recode_factor(tidy_Data2020$SEX, "1" = "Male", "2" = "Female")
+tidy_Data2020$State <- recode_factor(tidy_Data2020$State, "1" = "Alabama", "2" = "Alaska","4"= "Arizona", "5"="Arkansas", "6"="California","8"="Colorado","9"="Connecticut", "10"="Delaware","11"="District of Columbia","12"="Florida","13"="Georgia","15"="Hawaii", "16"="Idaho", "17"="Illinois", "18"="Indiana", "19"="Iowa", "20"="Kansas", "21"="Kentucky", "22"="Lousiana", "23"="Maine", "24"="Maryland", "25"="Massachussetts", "26"="Michigan", "27"="Minnesota", "28"="Mississipi", "29"="Missouri", "30"="Montana", "31"="Nebraska", "32"="Nevada", "33"="New Hampshire","34"="New Jersey","35"="New Mexico","36"="New York","37"="North Carolina", "38"="North Dakota","39"="Ohio","40"="Oklahoma","41"="Oregon","42"="Pennsylvania","44"="Rhode Island", "45"="South Carolina", "46"="South Dakota", "47"="Tennessee", "48"="Texas", "49"="Utah", "50"="Vermont", "51"="Virginia", "53"="Washington","54"="West Virginia","55"="Wisconsin","56"="Wyoming","66"="Guam","72"="Puerto Rico")
+tidy_Data2020$Age <- recode_factor(tidy_Data2020$Age, "1" = "18 to 24", "2" = "25 to 34","3"= "35 to 44", "4"="45 to 54", "5"="55 to 64", "6"="65 or older")
+tidy_Data2020$Race <- recode_factor(tidy_Data2020$Race, "1" = "White", "2" = "Black","3"= "Asian", "4"="Native American", "5"="Hispanic", "6"="Other race")
+tidy_Data2020$General_Health <- recode_factor(tidy_Data2020$General_Health, "1" = "Excellent", "2" = "Very good","3"= "Good", "4"="Fair", "5"="Poor", "7"="Don't know","9"="Refused","BLANK"="Missing")
+tidy_Data2020$Physical_Health <- recode_factor(tidy_Data2020$Physical_Health, "1" = "0 days not good.", "2" = "1-13 days not good","3"= "14+ days not good", "9"="Don't know")
+tidy_Data2020$Drinking <- recode_factor(tidy_Data2020$Drinking, "1" = "No", "2" = "Yes","9"= "Missing")
+tidy_Data2020$Asthma <- recode_factor(tidy_Data2020$Asthma , "1" = "Yes","2"= "No","7"="Don't know","9"="Refused","0" = "Missing")
+tidy_Data2020$Kidney_Disease<- recode_factor(tidy_Data2020$Kidney_Disease, "1" = "Yes","2"= "No","7"="Don't know","9"="Refused","0" = "Missing")
+tidy_Data2020$Any_Cancer<- recode_factor(tidy_Data2020$Any_Cancer, "1" = "Yes","2"= "No","7"="Don't know","9"="Refused","0" = "Missing")
+tidy_Data2020$Skin_Cancer<- recode_factor(tidy_Data2020$Skin_Cancer, "1" = "Yes","2"= "No","7"="Don't know","9"="Refused","0" = "Missing")
+tidy_Data2020$Diabetic<- recode_factor(tidy_Data2020$Diabetic, "1" = "Yes","2"= "Yes,Pregnant","3"="No","4"="No,pre-diabetic","7"="Don't know","9"="Refused","0" = "Missing")
+tidy_Data2020$COPD<- recode_factor(tidy_Data2020$COPD, "1" = "Yes","2"= "No","7"="Don't know","9"="Refused","0" = "Missing")
+tidy_Data2020$Any_Excercise<- recode_factor(tidy_Data2020$Any_Excercise, "1" = "Yes","2"= "No","7"="Don't know","9"="Refused","0" = "Missing")
+tidy_Data2020$Marital_Status<- recode_factor(tidy_Data2020$Marital_Status, "1" = "Married","2"= "Divorced","3"="Widowed","4"="Separated","5"="Never Married","6"="Unmarried Couple","9"="Refused","0" = "Missing")
+tidy_Data2020$Income_Level<- recode_factor(tidy_Data2020$Income_Level, "1" = "< $10,000","2"= "< $15,000","3"="< $20,000","4"="< $25,000","5"="< $35,000","6"="< $50,000","7"="< $75,000","8"="> $75,000","77"="Don't know","99"="Refused","0" = "Missing")
+tidy_Data2020$Smoking<- recode_factor(tidy_Data2020$Smoking, "1" = "Smokes Everyday","2"= "Smokes Somedays","3"="Former Smoker","4"= "Never Smoked","9"="Don't know")
+tidy_Data2020$Mental_Health<- recode_factor(tidy_Data2020$Mental_Health, "1" = "0 Days not good","2"= "1-13 Days not good","3"="14+ Days not good","9"="Don't know")
+```
+After re-leveling the data to describe the numbers with the values they represent based on the code book from the CDC website, we removed the variables where there is missing data or inconclusive data.
+
+
+```{r}
+#Remove unwanted levels
+tidy_Data2020 <- tidy_Data2020%>%filter(!Heart_Attack %in% c("Missing","Don't know","Refused"))%>%mutate(Heart_Attack=fct_drop(Heart_Attack))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Coronary_Heart_Disease %in% c("Missing","Don't know","Refused"))%>%mutate(Heart_Attack=fct_drop(Coronary_Heart_Disease))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Mental_Health %in% c("Missing","Don't know","Refused"))%>%mutate(Mental_Health=fct_drop(Mental_Health))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Smoking %in% c("Missing","Don't know","Refused"))%>%mutate(Smoking=fct_drop(Smoking))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Income_Level %in% c("Missing","Don't know","Refused"))%>%mutate(Income_Level=fct_drop(Income_Level))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Marital_Status %in% c("Missing","Don't know","Refused"))%>%mutate(Marital_Status=fct_drop(Marital_Status))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Any_Excercise %in% c("Missing","Don't know","Refused"))%>%mutate(Any_Excercise=fct_drop(Any_Excercise))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!COPD %in% c("Missing","Don't know","Refused"))%>%mutate(COPD=fct_drop(COPD))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Diabetic %in% c("Missing","Don't know","Refused"))%>%mutate(Diabetic=fct_drop(Diabetic))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Skin_Cancer %in% c("Missing","Don't know","Refused"))%>%mutate(Skin_Cancer=fct_drop(Skin_Cancer))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Any_Cancer %in% c("Missing","Don't know","Refused"))%>%mutate(Any_Cancer=fct_drop(Any_Cancer))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Kidney_Disease %in% c("Missing","Don't know","Refused"))%>%mutate(Kidney_Disease=fct_drop(Kidney_Disease))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Asthma %in% c("Missing","Don't know","Refused"))%>%mutate(Asthma=fct_drop(Asthma))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Drinking %in% c("Missing","Don't know","Refused"))%>%mutate(Drinking=fct_drop(Drinking))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Physical_Health %in% c("Missing","Don't know","Refused"))%>%mutate(Physical_Health=fct_drop(Physical_Health))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!General_Health %in% c("Missing","Don't know","Refused"))%>%mutate(General_Health=fct_drop(General_Health))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Race %in% c("Missing","Don't know","Refused"))%>%mutate(Race=fct_drop(Race))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!State %in% c("Missing","Don't know","Refused"))%>%mutate(State=fct_drop(State))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!SEX %in% c("Missing","Don't know","Refused"))%>%mutate(SEX=fct_drop(SEX))
+
+tidy_Data2020 <- tidy_Data2020%>%filter(!Stroke %in% c("Missing","Don't know","Refused"))%>%mutate(Stroke=fct_drop(Stroke))
+
+```
+## Visualize the data
+We visualized the data using a geom_bar graph from the ggplot package. We used position=fill to scale the graph in instances where there is a larger observation for one of the variables but not the other.
+
+```{r}
+#bar graphs
+graph_data<- subset(tidy_Data2020, select= -c(BMI)) #BMI exluded to make a suitable graph for a continuous variables.
+for(i in 2:ncol(graph_data)){
+  name<-colnames(graph_data[i])
+  print(ggplot(graph_data)+
+    geom_bar(aes(y=graph_data[,i],fill=Heart_Attack), position = "fill")+ylab(name))
+Sys.sleep(2)
+}
+```
+Looking at these graphs we noticed that for Coronary_Heart_Disease there is a 100% similarity on the data. We will remove this variable from the dataset moving forward. Some interesting associations we noticed with the target variable is:
+ + If you had a stroke you are more likely to have a heart attack
+ + Males were more likely to get a heart attack
+ + Being White or Native American increases the likelihood of a heart_attack
+ + Most of the heart attacks occur in those over the age of 45
+ + Those with a higher income level had less occurance of a heart attack
+ + State does not provide a valuable information. However it increases the computation power required so we'll remove it moving forward
+
+### Summary
+
+```{r}
+summary(tidy_Data2020)
+MCA_data<- subset(tidy_Data2020, select= -c(Coronary_Heart_Disease,State,BMI)) #dataset for MCA, avoids numerical variables and highly correlated variables
+Model_data<- subset(tidy_Data2020, select= -c(Coronary_Heart_Disease,State)) #dataset for other models without state to make computation faster, and without identical variables
+```
+From the summary, one can see the levels and occurrence for each variable and also note that BMI is the only numerical variable.
+
+The reason we have two data sets here is that Multiple Correspondence Analysis (MCA) prefers all categorical variables so we had to remove BMI.
+
+### View possible relationships
+####Multiple Correspondence analysis 
+```{r}
+model_MCA<-MCA(MCA_data, ncp = 18, graph =FALSE)
+
+#Eignine value plot
+fviz_screeplot(model_MCA, addlabels = TRUE, ylim = c(0, 10))
+
+#Biplot of every variable
+grp<- as.factor(MCA_data[,"Heart_Attack"])
+fviz_mca_biplot(model_MCA, label="var", invisible ="ind",habillage = grp, addEllipses = TRUE, ellipse.level= 0.95,col.ind = "cos2",
+               repel = TRUE, 
+               ggtheme = theme_minimal())
+
+#Individual plot of response variables grouped based on Heart_Atack
+
+p <- fviz_mca_ind(model_MCA, label="none", habillage=grp,
+       addEllipses=TRUE, ellipse.level=0.95)
+print(p)
+```
+The Scree plots show us that the first four dimensions explain the variation in most of the data. This means that a computational model using four dimension would explain most of the variation in the data.
+
+The Biplot shows the global pattern of the data plotted using dimensions one and two. It plots all the variables in one space using the dimensions as boundaries. We can see that there is an even amount of distribution for similar and dissimilar variables in the data. Looking closer on the representation of the variables in the lower right quadrant, we can note that there is an association between Former Smoker, 65 or Older, Any_Cancer_Yes, Skin_Cancer_Yes, Diabetic_Yes, Stroke_Yes, Kidney_Disease_Yes and our Target variable(Heart_Attack_Yes). These predictors are in line with our hypothesis as it is more common to see people who are older and with other major illness have a heart attack. On the opposite end of the quadrant(Top left), we have variables like 18-24, never_married and Unmarried_Couple far from the the target variable. This suggests that there is a small association with the target variable.
+
+When we apply the target variable to the biplot's individual variables we can see that there is an overlap and close to the center. We can safely assume that a normal distribution curve can be plotted from this values, and models that benefit from this would perform better on prediction. 
+
+
+## Applying several Models
+
+### Create A Data Partition And Defining measures of performance
+We will start applying prediction models but first we need to partition the data into a train set and a test set. 
+
+The measures of performance we are using for the models are Sensitivity, Specificity and Accuracy. According to ISLRv2, Sensitivity is defined as the number of correct positive cases accurately predicted by the model. Sensitivity is associated with True positive rate and Type-II error. Specificity is the measure of the number of incorrect positive cases predicted by the model. Specificity is associated with the false positive rate and a Type-I error. Accuracy is positive prediction value. 
+
+In the context of our data set, it is important to improve sensitivity, since determining if a person is more likely to have a heart attach is more important. However, having a high Specfificity is not of a major concern becasue in a real-life setting the patient would have other tests to backup the claim of a heart-attack. Therefore, we will use sensitivity as a measure of performance. This means if we have a low sensitivity from the model then it is not suitable for predicting heart_attack.
+
+```{r}
+set.seed(10)
+test_index <- createDataPartition(Model_data$Heart_Attack[1:275388], p = 0.60, list = FALSE)
+train_set <-Model_data[c(test_index),]
+test_set <- Model_data[-c(test_index),] 
+```
+
+###Logistic regression
+```{r}
+
+log_model<- glm(Heart_Attack~.,data=train_set, family = binomial)
+summary(log_model)
+phat.log <- predict(log_model, newdata = test_set, type = "response")
+yhat.log <- factor(if_else(phat.log < 0.5,"Yes","No"),levels = c("Yes","No"))
+roc(predictor = phat.log, response = test_set$Heart_Attack, plot = TRUE)
+confusionMatrix(yhat.log, test_set$Heart_Attack)
+
+```
+The logistic model used all the variables in the model data and returned a positive prediction accuracy of 0.9443. Most variables were highly significant to the level of p=0. The Sensitivity of this model is very low at 0.05. However, the specificity is very high at 0.99. This model is not suitable for predicting our target variable since there is a very low true positive rate and a high false positive rate.
+However, some variables such as income level until Income_level> $75,000, COPD No, Any Exercise No and Martial_Status Divorced, were not significant. 
+
+### LDA
+
+```{r}
+lda.mod <- lda(Heart_Attack ~ ., data = train_set)
+lda.mod
+summary(lda.mod)
+yhat.lda <- predict(lda.mod, newdata = test_set)
+roc(predictor = yhat.lda$posterior[,1], response = test_set$Heart_Attack, plot = TRUE)
+confusionMatrix(yhat.lda$class, test_set$Heart_Attack)
+```
+The LDA model used all the variables from the model data and returned an accuracy of 0.9334. The sensitivity of this model is improved. It is 0.22. The specificity is lowered to 0.9758. This model performance is acceptable to predict our target variable.
+### QDA
+
+```{r}
+#Qda
+qda.mod <- qda(Heart_Attack~ .,data=train_set)
+qda.mod
+
+yhat.qda <- predict(qda.mod, newdata = test_set)
+roc(predictor = yhat.qda$posterior[,1], response = test_set$Heart_Attack, plot = TRUE)
+confusionMatrix(yhat.qda$class, test_set$Heart_Attack)
+```
+Similarly, the QDA model used the all the variables in the model_data. However, it returned a smaller accuracy at 0.7421. However, it has a sensitivity 0.75468 and a specificity of 0.74131. This is a great model for our prediction since it maximizes the the true positive rate and lowers the false positive rate.
+
+
+### Naive Bayes for Classification
+```{r}
+mod.naive <- naiveBayes(Heart_Attack~., data = train_set, laplace = 0.5)
+mod.naive
+
+phat.naive <- predict(mod.naive, test_set, type = "raw")
+yhat.naive <- predict(mod.naive, test_set, type = "class")
+
+
+roc(predictor = phat.naive[,1], response = test_set$Heart_Attack, plot = TRUE)
+confusionMatrix(yhat.naive,test_set$Heart_Attack)
+```
+
+The Naive Bayes model is 90.01% accurate. But, the sensitivity is lowered to 0.39655 and the specificity is increased to 0.93008. One if the interesting things to note here is looking at the A-PRIORI probabilities for the factors logistic regression identified as insignificant we can see how many times the Bayes classifier designated the predictions in those classes. This would be helpful in creating an overall model. However, the Bayes model in its own is not a great model since it has a lowered sensitivity.  
+
+### Boosted Trees for Classification
+
+```{r}
+train_class01 <- train_set%>% mutate(Heart_Attack = if_else(Heart_Attack == "Yes",1,0))
+
+mod.boost.class <-gbm(Heart_Attack~., data=train_class01, 
+                      distribution = "bernoulli",
+                     n.trees=150, 
+                     interaction.depth=4, 
+                     shrinkage= 0.1,
+                     cv.folds = 10)
+
+summary(mod.boost.class)
+best.iter <- gbm.perf(mod.boost.class, plot.it = TRUE)
+
+phat.boost.class <- predict(mod.boost.class, newdata = test_set, n.trees = best.iter, type = "response")
+yhat.boost.class <- factor(if_else(phat.boost.class > 0.5,"Yes","No"),levels = c("Yes","No"))
+roc(predictor = phat.boost.class, response = test_set$Heart_Attack, plot = TRUE)
+confusionMatrix(yhat.boost.class,test_set$Heart_Attack)
+```
+This model also uses all the variables in model_data and is helpful to analze the relative importance graph. It identifies that General health, COPD, Stroke, Diabetes and Kidney Disease to be the top 5 important predictors. The accuracy for this model is 0.944. However, the sensitivity is not very low with a very high specificity. Although this model provides us information on what variables are important on model creation it is not a very good predictor.
+
+###Random Forest
+```{r}
+mtry=floor(sqrt(ncol(Model_data))) 
+mod.forest.class <- randomForest(Heart_Attack ~ ., data = train_set, mtry = 4, importance = TRUE)
+varImpPlot(mod.forest.class)
+
+yhat.forest <- predict(mod.forest.class, newdata = test_set)
+confusionMatrix(yhat.forest, test_set$Heart_Attack)
+
+```
+This model has one of the highest accuracies at 0.9437 and identifies that sex, general_health, mental_health, BMI, Stroke and income level are the important variables. However, it is also one of the models with the lowest sensitivity and highest specificity. So, we will not use this model to make predictions about heart_attack due to the low rate of true positive predictions.
+
+#Summary of models and Creating best model
+
+The following table shows the sensitivity, specificity and accuracy of all the models we created above.
+```{r}
+table <- matrix(c(0.054713,0.997278,0.9443,0.22224,0.97583,0.9334,0.75468,0.74131,0.7421,0.39655,0.93008,0.9001,0.042931,0.997970,0.9443,0.027114,0.998288,0.9437),ncol=3,byrow=TRUE)
+colnames(table) <- c("Sensitivity","Specificity","Accuracy")
+rownames(table) <- c("Logistic","LDA","QDA","Naive Bayes","Boosted Trees","Random Forest")
+table <- as.table(table)
+table
+```
+Based on these values we can create an overall model that incorporates the information from these models. The model will be a QDA model. The predictors were selected by looking at the relative importance from boosted trees and comparing then to the mean decrease in accuracy and gini in the results from random trees. Based on this comparison 10 variables were selected. These are General_Health, Maritial_Status, Age, Race, Stroke, Diabetic, SEX, Mental_Health, BMI, Income_Level, Smoking.
+
+
+```{r}
+
+qda.mod2 <- qda(Heart_Attack~ General_Health + Marital_Status + Race + Age + Stroke + Diabetic + SEX + Mental_Health + BMI+ Income_Level + Smoking,data=train_set)
+
+qda.mod2
+yhat.qda <- predict(qda.mod2, newdata = test_set)
+roc(predictor = yhat.qda$posterior[,1], response = test_set$Heart_Attack, plot = TRUE)
+confusionMatrix(yhat.qda$class, test_set$Heart_Attack)
+```
+
+
+Now that we have a model with the most effective predictors that maximize the Sensitivity we can look at what class of these predictors are effective at the prediction. For this we will look at the group means to see which class of predictors had a larger difference. The largest difference in group means was in General_Health_Fair, General_Health_Poor,  Marital_StatusWidowed, Age65 or older, SmokingFormer Smoker. Therefore, we predict that belonging to these categories will increase the chance of Heart_Attack being predicted Yes. We can put these predictors in a QDA model and see of there is an improvement in the Sensitivity.
+
+```{r}
+
+qda.mod3 <- qda(Heart_Attack~ General_Health + Marital_Status + Age +  Smoking,data=train_set)
+
+qda.mod3
+yhat.qda <- predict(qda.mod3, newdata = test_set)
+roc(predictor = yhat.qda$posterior[,1], response = test_set$Heart_Attack, plot = TRUE)
+confusionMatrix(yhat.qda$class, test_set$Heart_Attack)
+```
+
+As expected the model had an improved prediction ability with a sensitivity of 0.82037.
+
+#Conclusion
+
+Based on all the models that fit all the variables a high sensitivity was achieved from only a few models. QDA had the highest sensitivity followed by LDA and Naive Bayes. Based on this we suggest that the best model for predicting Heart_Attack to be a combination of QDA with valuable information about predictors from the other models. We tested this hypothesis by narrowing down the variables based on information from boosted trees and random forest and achieved a model with a sensitivity of 0.795. Furthermore, we looked at the group means of this model to note that there are classes of predictors which seemed to be more important. By removing the predictord with a small group mean difference we were able to further tune our final model to have a specificity of 0.82037. Future studies could potentialy improve on this by further identifying which classes of predictors have a high relatively significance using models with high computational capacity such as Neural Networks.
+
+
+
+
